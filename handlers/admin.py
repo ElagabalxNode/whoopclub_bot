@@ -62,7 +62,7 @@ def build_calendar(year: int, month: int) -> InlineKeyboardMarkup:
                 continue
 
             date_obj = datetime(year, month, day).date()
-            if i in (1, 5) and date_obj >= today:
+            if i in (1, 3) and date_obj >= today:
                 date_str = date_obj.isoformat()
                 label = f"{day}"
                 if date_str in existing_dates:
@@ -172,13 +172,13 @@ async def create_training(callback: CallbackQuery):
     _, date_str = callback.data.split(":", 1)
     selected_date = datetime.strptime(date_str, "%Y-%m-%d")
 
-    # Устанавливаем время для вторника или субботы
+    # Устанавливаем время для вторника или четверга
     if selected_date.weekday() == 1:  # вторник
         dt = selected_date.replace(hour=19, minute=0)
-    elif selected_date.weekday() == 5:  # суббота
-        dt = selected_date.replace(hour=16, minute=0)
+    elif selected_date.weekday() == 3:  # четверг
+        dt = selected_date.replace(hour=18, minute=0)
     else:
-        await callback.answer("Можно выбрать только вторник или субботу", show_alert=True)
+        await callback.answer("Можно выбрать только вторник или четверг", show_alert=True)
         return
 
     with get_connection() as conn:
@@ -189,8 +189,7 @@ async def create_training(callback: CallbackQuery):
         # Автоматическая запись двух админов
         now = datetime.now().isoformat()
         admin_slots = [
-            (training_id, 932407372, 'fast', 'R1'),
-            (training_id, 132536948, 'fast', 'L1')
+            (training_id, 1017596699, 'fast', 'R1'),
         ]
         for training_id, admin_id, group, channel in admin_slots:
             cursor.execute("""
@@ -395,7 +394,7 @@ async def admin_help(message: Message):
         "🛠 <b>Админ-команды:</b>\n\n"
         "📋 <b>/users</b> — список всех зарегистрированных пользователей\n"
         "📅 <b>/new_training</b> — создать новую тренировку через календарь\n"
-        "Создание тренировки доступно только на вторник или субботу.\n"
+        "Создание тренировки доступно только на вторник или четверг.\n"
         "➕ <b>/add_subscription &lt;user_id&gt; &lt;кол-во&gt;</b> — начислить абонементы пользователю\n"
         "💡 После команды <code>/add_subscription</code> бот спросит подтверждение перед начислением.\n"
         "\n"

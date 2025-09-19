@@ -35,7 +35,7 @@ async def show_available_trainings(message: Message):
         await message.answer("❌ Пока нет открытых тренировок.")
         return
 
-    total_slots = 14  # 7 в fast + 7 в standard
+    total_slots = 8  # 4 в fast + 4 в standard
 
     keyboard = []
     for training_id, date_str, booked_count, user_booked, user_pending in trainings:
@@ -44,8 +44,8 @@ async def show_available_trainings(message: Message):
         weekday_label = ""
         if date_obj.weekday() == 1:
             weekday_label = "Вторник "
-        elif date_obj.weekday() == 5:
-            weekday_label = "Суббота "
+        elif date_obj.weekday() == 3:
+            weekday_label = "Четверг "
 
         free_slots = total_slots - (booked_count or 0)
         label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')} ({free_slots})"
@@ -152,11 +152,11 @@ async def back_to_trainings(callback: CallbackQuery):
         await callback.message.edit_text("❌ Пока нет открытых тренировок.")
         return
 
-    total_slots = 12
+    total_slots = 8
     keyboard = []
     for training_id, date_str, booked_count, user_booked in trainings:
         date_obj = datetime.fromisoformat(date_str)
-        weekday_label = "Вторник " if date_obj.weekday() == 1 else "Суббота " if date_obj.weekday() == 5 else ""
+        weekday_label = "Вторник " if date_obj.weekday() == 1 else "Четверг " if date_obj.weekday() == 3 else ""
         free_slots = total_slots - (booked_count or 0)
         label = f"{weekday_label}{date_obj.strftime('%d.%m %H:%M')} ({free_slots})"
         if (user_booked or 0) > 0:
@@ -295,7 +295,7 @@ async def reserve_slot(callback: CallbackQuery):
                 WHERE training_id = ? AND status = 'confirmed'
             """, (training_id,))
             booked = cursor.fetchone()[0]
-            free_slots = 14 - booked
+            free_slots = 8 - booked
 
             cursor.execute("SELECT subscription FROM users WHERE user_id = ?", (user_id,))
             sub_row = cursor.fetchone()
@@ -311,7 +311,7 @@ async def reserve_slot(callback: CallbackQuery):
         await callback.bot.send_message(
             REQUIRED_CHAT_ID,
             f"🛸 {'@' + username if username else full_name} записался на тренировку <b>{date_fmt}</b>\n"
-            f"Осталось мест: {free_slots}/12",
+            f"Осталось мест: {free_slots}/8",
             parse_mode="HTML"
         )
 
@@ -337,7 +337,7 @@ async def reserve_slot(callback: CallbackQuery):
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
             f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
-            f"💳 Пожалуйста, оплатите <b>800₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
+            f"💳 Пожалуйста, оплатите <b>450₽</b> по ссылке: <a href='{PAYMENT_LINK}'>ОПЛАТИТЬ</a>\n"
             f"Либо по номеру карты <code>{CARD}</code>\n"
             f"После оплаты нажмите кнопку ниже.",
             reply_markup=keyboard
@@ -566,7 +566,7 @@ async def confirm_booking(callback: CallbackQuery):
     await callback.bot.send_message(
         REQUIRED_CHAT_ID,
         f"🛸 {display_name} записался на тренировку <b>{date_fmt}</b>\n"
-        f"Осталось мест: {free_slots}/12"
+        f"Осталось мест: {free_slots}/8"
     )
         
     for admin in ADMINS:
@@ -926,7 +926,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
     await callback.bot.send_message(
         REQUIRED_CHAT_ID,
         f"🚪 Освободилось место на тренировке <b>{date_fmt}</b>!\n"
-        f"Осталось мест: {free_slots}/12",
+        f"Осталось мест: {free_slots}/8",
         parse_mode="HTML"
     )
 
