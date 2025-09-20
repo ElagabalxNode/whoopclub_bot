@@ -31,7 +31,7 @@ async def start_registration(message: Message, state: FSMContext):
         print(f"DEBUG: Error checking chat membership: {e}")
         await message.answer(
             "❌ Чтобы зарегистрироваться, вступи в наш чат:\n"
-            "👉 https://t.me/+R3Bjy51_7admMDY6",
+            "👉 https://t.me/+yjIVXr35AlcxNzJi",
             reply_markup=ReplyKeyboardRemove()
         )
         return
