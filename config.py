@@ -12,5 +12,6 @@ if not BOT_TOKEN:
     exit(1)
 
 ADMINS = list(map(int, os.getenv("ADMINS", "").split()))
-PAYMENT_LINK = os.getenv("PAYMENT_LINK")
+# PAYMENT_LINK = os.getenv("PAYMENT_LINK")  # Временно отключено
+PAYMENT_LINK = None
 CARD = os.getenv("CARD")
