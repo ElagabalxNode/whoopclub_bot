@@ -420,7 +420,7 @@ async def resend_pending_handler(message: Message, bot: Bot):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.id, s.training_id, s.user_id, s.group_name, s.channel, s.payment_type, s.created_at,
+            SELECT s.id, s.training_id, s.user_id, s.channel, s.payment_type, s.created_at,
                    t.date, u.nickname, u.system
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
@@ -439,7 +439,7 @@ async def resend_pending_handler(message: Message, bot: Bot):
     sent_count = 0
 
     for row in slots:
-        slot_id, training_id, user_id, group, channel, payment_type, _, training_date, _, _, = row
+        slot_id, training_id, user_id, channel, payment_type, _, training_date, _, _ = row
 
         try:
             chat_member = await bot.get_chat_member(chat_id=user_id, user_id=user_id)
@@ -453,7 +453,6 @@ async def resend_pending_handler(message: Message, bot: Bot):
             bot=bot,
             training_id=training_id,
             user_id=user_id,
-            group=group,
             channel=channel,
             slot_id=slot_id,
             username=username,

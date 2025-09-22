@@ -12,7 +12,7 @@ async def monitor_pending_slots(bot: Bot):
         with get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT s.id, s.training_id, s.user_id, s.group_name, s.channel, s.payment_type, s.created_at,
+                SELECT s.id, s.training_id, s.user_id, s.channel, s.payment_type, s.created_at,
                        t.date, u.nickname, u.system
                 FROM slots s
                 JOIN trainings t ON s.training_id = t.id
@@ -29,7 +29,6 @@ async def monitor_pending_slots(bot: Bot):
                 slot_id,
                 training_id,
                 user_id,
-                group,
                 channel,
                 payment_type,
                 created_at,
@@ -46,7 +45,6 @@ async def monitor_pending_slots(bot: Bot):
                     bot=bot,
                     training_id=training_id,
                     user_id=user_id,
-                    group=group,
                     channel=channel,
                     slot_id=slot_id,
                     username=username,
@@ -88,25 +86,20 @@ async def check_and_send_progrev(bot: Bot):
                 with get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute("""
-                        SELECT group_name, COUNT(*) 
+                        SELECT COUNT(*) 
                         FROM slots 
                         WHERE training_id = ? AND status IN ('pending', 'confirmed')
-                        GROUP BY group_name
                     """, (training_id,))
-                    counts = dict(cursor.fetchall())
+                    booked_count = cursor.fetchone()[0]
 
-                fast_free = 7 - counts.get("fast", 0)
-                standard_free = 7 - counts.get("standard", 0)
-
-                fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
-                standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
+                free_slots = 8 - booked_count
+                slots_label = f"{free_slots} мест" if free_slots > 0 else "места закончились"
                 date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
 
                 text = (
                     f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
                     f"📅 <b>{date_fmt}</b>\n\n"
-                    f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
-                    f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+                    f"🎯 Свободных мест: <b>{slots_label}</b>\n\n"
                     f"🚀 Успей записаться, пока есть места!"
                 )
 
@@ -140,14 +133,13 @@ async def monitor_full_trainings(bot: Bot):
 
                 # Проверяем confirmed-записи по группам
                 cursor.execute("""
-                    SELECT group_name, COUNT(*)
+                    SELECT COUNT(*)
                     FROM slots
                     WHERE training_id = ? AND status = 'confirmed'
-                    GROUP BY group_name
                 """, (training_id,))
-                counts = dict(cursor.fetchall())
+                booked_count = cursor.fetchone()[0]
 
-                if counts.get("fast", 0) >= 7 and counts.get("standard", 0) >= 7:
+                if booked_count >= 8:
                     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m %H:%M")
                     text = f"❌ Все места на тренировку <b>{date_fmt}</b> закончились!"
                     try:

@@ -357,7 +357,7 @@ async def confirm_manual_payment(callback: CallbackQuery):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.training_id, s.group_name, s.channel, t.date
+            SELECT s.training_id, s.channel, t.date
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
             WHERE s.id = ?
@@ -389,7 +389,7 @@ async def confirm_manual_payment(callback: CallbackQuery):
 
     await callback.message.edit_text("🔔 Администратор уведомлён. Ожидайте подтверждения оплаты.")
 
-async def notify_admins_about_booking(bot, training_id, user_id, group, channel, slot_id, username, payment_type, full_name, date_str):
+async def notify_admins_about_booking(bot, training_id, user_id, channel, slot_id, username, payment_type, full_name, date_str):
     logger.info("[notify_admins_about_booking]")
     logger.info(f"  user_id: {user_id}")
     logger.info(f"  username: {username}")
@@ -415,7 +415,6 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
         payment_desc += f" (осталось {remaining})"
 
     date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
-    group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
 
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"confirm:{slot_id}"),
@@ -426,7 +425,6 @@ async def notify_admins_about_booking(bot, training_id, user_id, group, channel,
         f"📥 Новая запись на тренировку:\n"
         f"👤 {user_link} (ID: <code>{user_id}</code>)\n"
         f"📅 Дата: <b>{date_fmt}</b>\n"
-        f"🏁 Группа: <b>{group_label}</b>\n"
         f"📡 Канал: <b>{channel}</b>\n"
         f"🎮 OSD: <b>{nickname}</b>\n"
         f"🎥 Видео: <b>{system}</b>\n"
@@ -455,7 +453,7 @@ async def confirm_booking(callback: CallbackQuery):
 
         # Получаем все необходимые данные
         cursor.execute("""
-            SELECT s.user_id, s.group_name, s.channel, s.payment_type, t.date, u.nickname, u.system
+            SELECT s.user_id, s.channel, s.payment_type, t.date, u.nickname, u.system
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
             JOIN users u ON s.user_id = u.user_id
@@ -555,7 +553,7 @@ async def reject_booking(callback: CallbackQuery):
 
         # Получаем данные о слоте и пользователе
         cursor.execute("""
-            SELECT s.user_id, s.status, s.group_name, s.channel, s.payment_type, t.date,
+            SELECT s.user_id, s.status, s.channel, s.payment_type, t.date,
                    u.nickname, u.system
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
@@ -633,7 +631,7 @@ async def show_my_bookings(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT t.date, s.group_name, s.channel, s.status
+            SELECT t.date, s.channel, s.status
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
             WHERE s.user_id = ? AND t.status != 'cancelled'
@@ -751,7 +749,7 @@ async def confirm_cancel_request(callback: CallbackQuery):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.user_id, s.group_name, s.channel, s.payment_type, t.date,
+            SELECT s.user_id, s.channel, s.payment_type, t.date,
                    u.nickname, u.system
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
@@ -811,7 +809,7 @@ async def admin_confirm_cancel(callback: CallbackQuery):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.user_id, s.payment_type, t.date, s.group_name, s.channel,
+            SELECT s.user_id, s.payment_type, t.date, s.channel,
                    u.nickname, u.system, t.id
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
