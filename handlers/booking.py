@@ -57,7 +57,7 @@ async def show_available_trainings(message: Message):
         elif (booked_count or 0) >= total_slots:
             label += " ❌"
 
-        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
+        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"book:{training_id}")])
 
     await message.answer("Выберите тренировку для записи:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
@@ -82,19 +82,17 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
             await callback.answer("Вы уже записаны на эту тренировку.", show_alert=True)
             return
 
-        # Получаем кол-во занятых мест в каждой группе
+        # Получаем общее кол-во занятых мест
         cursor.execute("""
-            SELECT group_name, COUNT(*) 
+            SELECT COUNT(*) 
             FROM slots 
             WHERE training_id = ? AND status IN ('pending', 'confirmed')
-            GROUP BY group_name
         """, (training_id,))
-        counts = dict(cursor.fetchall())
+        booked_count = cursor.fetchone()[0]
 
-        fast_free = 7 - counts.get("fast", 0)
-        standard_free = 7 - counts.get("standard", 0)
+        free_slots = 8 - booked_count
 
-        if fast_free + standard_free <= 0:
+        if free_slots <= 0:
             await callback.answer("Мест не осталось ❌", show_alert=True)
             return
 
@@ -108,21 +106,9 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
 
     date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [
-        InlineKeyboardButton(
-            text=f"⚡ Быстрая ({fast_free})", 
-            callback_data=f"book:{training_id}:fast"
-        ),
-        InlineKeyboardButton(
-            text=f"🏁 Стандартная ({standard_free})", 
-            callback_data=f"book:{training_id}:standard"
-        )
-    ],
-    [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_trainings")]
-])
-
-    await callback.message.edit_text(f"📅 Тренировка {date_str}\n\nВыбери группу:", reply_markup=keyboard)
+    # Прямая запись на тренировку без выбора группы
+    await callback.answer()
+    await select_channel(callback, training_id, date_str)
 
 
 #Кнопки Назад
@@ -163,30 +149,21 @@ async def back_to_trainings(callback: CallbackQuery):
             label += " ✅"
         elif (booked_count or 0) >= total_slots:
             label += " ❌"
-        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"select_training:{training_id}")])
+        keyboard.append([InlineKeyboardButton(text=label, callback_data=f"book:{training_id}")])
 
     await callback.message.edit_text("Выберите тренировку для записи:", reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
 
-@router.callback_query(F.data.startswith("back_to_groups:"))
-async def back_to_groups(callback: CallbackQuery):
-    training_id = int(callback.data.split(":")[1])
-    await show_group_choice(callback=callback, training_id_override=training_id)
+# Функция back_to_groups удалена - больше нет разделения на группы
 #Бронирование
 @router.callback_query(F.data.startswith("book:"))
 async def choose_channel(callback: CallbackQuery):
-    _, training_id, group = callback.data.split(":")
+    _, training_id = callback.data.split(":")
     training_id = int(training_id)
 
-    # Новый список каналов для каждой группы
-    GROUP_CHANNELS = {
-        "fast": ["L1","R1","R2", "F2", "F4", "R7", "R8"],
-        "standard": ["R1", "R2", "F2", "F4", "R7", "R8", "L1"]
-    }
+    # Единый список каналов для всех
+    ALL_CHANNELS = ["L1", "R1", "R2", "F2", "F4", "R7", "R8"]
 
-    all_channels = GROUP_CHANNELS.get(group)
-    if not all_channels:
-        await callback.message.edit_text("❌ Неизвестная группа.")
-        return
+    all_channels = ALL_CHANNELS
 
     with get_connection() as conn:
         
@@ -202,33 +179,33 @@ async def choose_channel(callback: CallbackQuery):
         date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
         cursor.execute("""
             SELECT channel FROM slots
-            WHERE training_id = ? AND group_name = ? AND status IN ('pending', 'confirmed')
-        """, (training_id, group))
+            WHERE training_id = ? AND status IN ('pending', 'confirmed')
+        """, (training_id,))
         taken = [row[0] for row in cursor.fetchall()]
 
     available = [ch for ch in all_channels if ch not in taken]
 
     if not available:
-        await callback.message.edit_text("❌ В этой группе нет свободных каналов.")
+        await callback.message.edit_text("❌ Нет свободных каналов на этой тренировке.")
         return
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{group}:{ch}")]
+    [InlineKeyboardButton(text=ch, callback_data=f"reserve:{training_id}:{ch}")]
     for ch in available
     ] + [
-    [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_to_groups:{training_id}")]
+    [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_trainings")]
     ])
    
 
     await callback.message.edit_text(
-        f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>:",
+        f"📅 Тренировка {date_str} \n\n 🧩 Свободные каналы:",
         reply_markup=keyboard
     )
 
 
 @router.callback_query(F.data.startswith("reserve:"))
 async def reserve_slot(callback: CallbackQuery):
-    _, training_id, group, channel = callback.data.split(":")
+    _, training_id, channel = callback.data.split(":")
     training_id = int(training_id)
     user_id = callback.from_user.id
     username = callback.from_user.username
@@ -239,8 +216,8 @@ async def reserve_slot(callback: CallbackQuery):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT COUNT(*) FROM slots
-            WHERE training_id = ? AND group_name = ? AND channel = ? AND status IN ('pending', 'confirmed')
-        """, (training_id, group, channel))
+            WHERE training_id = ? AND channel = ? AND status IN ('pending', 'confirmed')
+        """, (training_id, channel))
         taken = cursor.fetchone()[0]
 
         if taken:
@@ -267,12 +244,11 @@ async def reserve_slot(callback: CallbackQuery):
 
         # Регистрируем слот
         cursor.execute("""
-            INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at, payment_type)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO slots (training_id, user_id, channel, status, created_at, payment_type)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (
             training_id,
             user_id,
-            group,
             channel,
             status,
             datetime.now().isoformat(),
@@ -303,7 +279,7 @@ async def reserve_slot(callback: CallbackQuery):
 
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
-            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"✅ Вы забронировали канал <b>{channel}</b>.\n"
             f"<i>Оплата через абонемент. Запись подтверждена автоматически.</i>\n"
             f"🎟 Осталось абонементов: <b>{sub_left}</b>"
         )
@@ -320,7 +296,6 @@ async def reserve_slot(callback: CallbackQuery):
                 admin,
                 f"✅ {'@' + username if username else full_name} записался через абонемент:\n"
                 f"📅 {date_fmt}\n"
-                f"🏁 {'⚡ <b>Быстрая</b>' if group == 'fast' else '🏁 <b>Стандартная</b>'}\n"
                 f"📡 Канал: <b>{channel}</b>\n"
                 f"🎟 Осталось абонементов: <b>{sub_left}</b>",
                 parse_mode="HTML"
@@ -336,7 +311,7 @@ async def reserve_slot(callback: CallbackQuery):
 
         await callback.message.edit_text(
             f"📅 <b>Тренировка {date_fmt}</b>\n"
-            f"✅ Вы забронировали <b>{channel}</b> в группе <b>{'Быстрая' if group == 'fast' else 'Стандартная'}</b>.\n"
+            f"✅ Вы забронировали канал <b>{channel}</b>.\n"
             f"💳 Пожалуйста, оплатите <b>450₽</b> по номеру карты: <code>{CARD}</code>\n"
             f"📞 Свяжитесь с администратором для получения ссылки на оплату\n"
             f"После оплаты нажмите кнопку ниже.",

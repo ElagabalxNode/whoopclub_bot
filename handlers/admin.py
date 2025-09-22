@@ -189,13 +189,13 @@ async def create_training(callback: CallbackQuery):
         # Автоматическая запись двух админов
         now = datetime.now().isoformat()
         admin_slots = [
-            (training_id, 1017596699, 'fast', 'R1'),
+            (training_id, 1017596699, 'R1'),
         ]
-        for training_id, admin_id, group, channel in admin_slots:
+        for training_id, admin_id, channel in admin_slots:
             cursor.execute("""
-                INSERT INTO slots (training_id, user_id, group_name, channel, status, created_at, payment_type)
-                VALUES (?, ?, ?, ?, 'confirmed', ?, 'admin')
-            """, (training_id, admin_id, group, channel, now))
+                INSERT INTO slots (training_id, user_id, channel, status, created_at, payment_type)
+                VALUES (?, ?, ?, 'confirmed', ?, 'admin')
+            """, (training_id, admin_id, channel, now))
 
         conn.commit()
 
@@ -492,23 +492,19 @@ async def send_progrev_message(message: Message):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT group_name, COUNT(*) 
+            SELECT COUNT(*) 
             FROM slots 
             WHERE training_id = ? AND status IN ('confirmed')
-            GROUP BY group_name
         """, (training_id,))
-        counts = dict(cursor.fetchall())
+        booked_count = cursor.fetchone()[0]
 
-    fast_free = 7 - counts.get("fast", 0)
-    standard_free = 7 - counts.get("standard", 0)
-    fast_label = f"{fast_free} мест" if fast_free > 0 else "места закончились"
-    standard_label = f"{standard_free} мест" if standard_free > 0 else "места закончились"
+    free_slots = 8 - booked_count
+    slots_label = f"{free_slots} мест" if free_slots > 0 else "места закончились"
 
     text = (
         f"🔥 <b>Остались места на ближайшую тренировку!</b>\n"
         f"📅 <b>{date_fmt}</b>\n\n"
-        f"⚡ Быстрая группа: <b>{fast_label}</b>\n"
-        f"🏁 Стандартная группа: <b>{standard_label}</b>\n\n"
+        f"🎯 Свободных мест: <b>{slots_label}</b>\n\n"
         f"🚀 Успей записаться, пока есть места!"
     )
 

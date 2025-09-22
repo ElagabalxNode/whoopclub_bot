@@ -27,27 +27,19 @@ def get_participants_by_date(date: str = Query(..., description="Формат DD
 
     # Получить пилотов и каналы
     cursor.execute("""
-        SELECT u.nickname, s.group_name, s.channel
+        SELECT u.nickname, s.channel
         FROM slots s
         JOIN users u ON u.user_id = s.user_id
         WHERE s.training_id = ? AND s.status = 'confirmed'
     """, (training_id,))
 
-    def map_group_to_heat(group_name: str) -> str:
-        if group_name.lower() == "fast":
-            return "Группа 1"
-        elif group_name.lower() == "standard":
-            return "Группа 2"
-        else:
-            return "Группа ???"
-
     return [
         {
             "name": nickname,
             "callsign": nickname,
-            "group": group,
-            "heat": map_group_to_heat(group),
+            "group": "Группа",
+            "heat": "Группа",
             "channel": channel
         }
-        for nickname, group, channel in cursor.fetchall()
+        for nickname, channel in cursor.fetchall()
     ]

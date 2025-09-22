@@ -46,7 +46,6 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 training_id INTEGER NOT NULL,
                 user_id INTEGER NOT NULL,
-                group_name TEXT NOT NULL,
                 channel TEXT NOT NULL,
                 payment_type TEXT NOT NULL,
                 status TEXT NOT NULL,
