@@ -571,7 +571,7 @@ async def pending_slots_handler(message: Message):
         cursor = conn.cursor()
         cursor.execute("""
             SELECT s.id, s.training_id, s.user_id, s.channel, s.payment_type, s.created_at,
-                   t.date, u.nickname, u.full_name
+                   t.date, u.nickname
             FROM slots s
             JOIN trainings t ON s.training_id = t.id
             LEFT JOIN users u ON s.user_id = u.user_id
@@ -589,7 +589,7 @@ async def pending_slots_handler(message: Message):
     
     for row in rows:
         (slot_id, training_id, user_id, channel, payment_type, 
-         created_at, training_date, nickname, full_name) = row
+         created_at, training_date, nickname) = row
         
         # Форматируем дату тренировки
         date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
@@ -598,7 +598,7 @@ async def pending_slots_handler(message: Message):
         created_fmt = datetime.fromisoformat(created_at).strftime("%d.%m %H:%M")
         
         # Имя пользователя
-        user_name = nickname or full_name or f"ID: {user_id}"
+        user_name = nickname or f"ID: {user_id}"
         
         # Тип оплаты
         if payment_type == "card":
