@@ -20,8 +20,8 @@ async def show_available_trainings(message: Message):
 
         cursor.execute("""
             SELECT t.id, t.date,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status = 'confirmed') AS booked_count,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status = 'confirmed') AS user_booked,
                 (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending_cancel')) AS user_pending
             FROM trainings t
             WHERE t.status = 'open' AND t.date > ?
@@ -86,7 +86,7 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
         cursor.execute("""
             SELECT COUNT(*) 
             FROM slots 
-            WHERE training_id = ? AND status IN ('pending', 'confirmed')
+            WHERE training_id = ? AND status = 'confirmed'
         """, (training_id,))
         booked_count = cursor.fetchone()[0]
 
@@ -104,11 +104,12 @@ async def show_group_choice(callback: CallbackQuery, training_id_override: int =
         await callback.message.edit_text("❌ Тренировка не найдена.")
         return
 
-    date_str = datetime.fromisoformat(row[0]).strftime("%d.%m.%Y %H:%M")
-
     # Прямая запись на тренировку без выбора группы
     await callback.answer()
-    await select_channel(callback, training_id, date_str)
+    # Создаем временный callback с правильным форматом
+    temp_callback = callback
+    temp_callback.data = f"book:{training_id}"
+    await choose_channel(temp_callback)
 
 
 #Кнопки Назад
@@ -124,8 +125,8 @@ async def back_to_trainings(callback: CallbackQuery):
 
         cursor.execute("""
             SELECT t.id, t.date,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status IN ('pending', 'confirmed')) AS booked_count,
-                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status IN ('pending', 'confirmed')) AS user_booked
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND status = 'confirmed') AS booked_count,
+                (SELECT COUNT(*) FROM slots WHERE training_id = t.id AND user_id = ? AND status = 'confirmed') AS user_booked
             FROM trainings t
             WHERE t.status = 'open' AND datetime(t.date) > ?
             ORDER BY t.date ASC
@@ -644,11 +645,10 @@ async def show_my_bookings(message: Message):
         return
 
     lines = ["📅 Ваши записи на тренировки:\n\n"]
-    for date_str, group, channel, status in rows:
+    for date_str, channel, status in rows:
         date_fmt = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
-        group_label = "⚡ Быстрая" if group == "fast" else "🏁 Стандартная"
         status_label = "⏳ Ожидает" if status == "pending" else "✅ Подтверждена"
-        lines.append(f"— {date_fmt} | {group_label} | {channel} | {status_label}\n\n")
+        lines.append(f"— {date_fmt} | {channel} | {status_label}\n\n")
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отменить запись", callback_data="cancel_booking_menu")]

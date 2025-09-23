@@ -2,11 +2,10 @@ from aiogram import Router, Bot, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
-from datetime import datetime, timedelta
+from datetime import datetime
 from config import ADMINS, REQUIRED_CHAT_ID
 from database.db import get_connection
 from aiogram.filters.command import Command, CommandObject
-from aiogram.utils.markdown import hbold
 from handlers.booking import notify_admins_about_booking
 import calendar
 
@@ -404,6 +403,7 @@ async def admin_help(message: Message):
         "🪪<b>/id</b> — узнать свой Telegram ID\n"
         "🚒<b>/progrev</b> - отправить прогрев о свободных местах\n"
         "🔁<b>/resend_pending</b> - проверить нет ли залипших слотов\n"
+        "⏳<b>/pending_slots</b> - показать все ожидающие подтверждения записи\n"
         "\n"
     )
 
@@ -558,3 +558,69 @@ async def announce_handler(message: Message, bot: Bot, command: CommandObject):
         "• Ответь командой <code>/announce</code> на сообщение — чтобы переслать его (с вложениями) в чат клуба",
         parse_mode=ParseMode.HTML,
     )
+
+
+@admin_router.message(Command("pending_slots"))
+async def pending_slots_handler(message: Message):
+    """Показать все записи со статусом pending"""
+    if message.from_user.id not in ADMINS:
+        await message.answer("❌ У тебя нет прав администратора.")
+        return
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.id, s.training_id, s.user_id, s.channel, s.payment_type, s.created_at,
+                   t.date, u.nickname, u.full_name
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            LEFT JOIN users u ON s.user_id = u.user_id
+            WHERE s.status = 'pending'
+            ORDER BY s.created_at DESC
+        """)
+        rows = cursor.fetchall()
+
+    if not rows:
+        await message.answer("✅ Нет записей, ожидающих подтверждения.")
+        return
+
+    # Формируем сообщение
+    lines = ["⏳ <b>Записи, ожидающие подтверждения:</b>\n\n"]
+    
+    for row in rows:
+        (slot_id, training_id, user_id, channel, payment_type, 
+         created_at, training_date, nickname, full_name) = row
+        
+        # Форматируем дату тренировки
+        date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+        
+        # Форматируем дату создания записи
+        created_fmt = datetime.fromisoformat(created_at).strftime("%d.%m %H:%M")
+        
+        # Имя пользователя
+        user_name = nickname or full_name or f"ID: {user_id}"
+        
+        # Тип оплаты
+        if payment_type == "card":
+            payment_emoji = "💳"
+        elif payment_type == "subscription":
+            payment_emoji = "💰"
+        else:
+            payment_emoji = "❓"
+        
+        lines.append(
+            f"🆔 <b>ID:</b> {slot_id}\n"
+            f"👤 <b>Пользователь:</b> {user_name}\n"
+            f"📅 <b>Тренировка:</b> {date_fmt}\n"
+            f"📡 <b>Канал:</b> {channel}\n"
+            f"{payment_emoji} <b>Оплата:</b> {payment_type}\n"
+            f"⏰ <b>Создано:</b> {created_fmt}\n"
+            f"{'─' * 30}\n"
+        )
+
+    # Разбиваем на части, если сообщение слишком длинное
+    full_text = "\n".join(lines)
+    parts = chunk_text_by_lines(full_text)
+    
+    for part in parts:
+        await message.answer(part, parse_mode="HTML")

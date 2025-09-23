@@ -88,7 +88,7 @@ async def check_and_send_progrev(bot: Bot):
                     cursor.execute("""
                         SELECT COUNT(*) 
                         FROM slots 
-                        WHERE training_id = ? AND status IN ('pending', 'confirmed')
+                        WHERE training_id = ? AND status = 'confirmed'
                     """, (training_id,))
                     booked_count = cursor.fetchone()[0]
 
