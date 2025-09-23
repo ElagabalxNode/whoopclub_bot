@@ -225,6 +225,21 @@ async def reserve_slot(callback: CallbackQuery):
             await callback.answer("Этот канал уже занят другим участником.", show_alert=True)
             return
 
+        # Проверка: пользователь уже записан на эту тренировку
+        cursor.execute("""
+            SELECT COUNT(*) FROM slots
+            WHERE training_id = ? AND user_id = ?
+            AND status IN ('pending', 'confirmed', 'pending_cancel')
+        """, (training_id, user_id))
+        already_booked = cursor.fetchone()[0]
+
+        if already_booked:
+            await callback.answer(
+                "❌ Вы уже записаны на эту тренировку!",
+                show_alert=True
+            )
+            return
+
         # Получаем дату тренировки
         cursor.execute("SELECT date FROM trainings WHERE id = ?", (training_id,))
         row = cursor.fetchone()

@@ -584,8 +584,9 @@ async def pending_slots_handler(message: Message):
         await message.answer("✅ Нет записей, ожидающих подтверждения.")
         return
 
-    # Формируем сообщение
+    # Формируем сообщение с кнопками
     lines = ["⏳ <b>Записи, ожидающие подтверждения:</b>\n\n"]
+    keyboard_buttons = []
     
     for row in rows:
         (slot_id, training_id, user_id, channel, payment_type, 
@@ -615,12 +616,156 @@ async def pending_slots_handler(message: Message):
             f"📡 <b>Канал:</b> {channel}\n"
             f"{payment_emoji} <b>Оплата:</b> {payment_type}\n"
             f"⏰ <b>Создано:</b> {created_fmt}\n"
-            f"{'─' * 30}\n"
         )
+        
+        # Добавляем кнопки для каждой записи
+        keyboard_buttons.append([
+            InlineKeyboardButton(
+                text=f"✅ Подтвердить {slot_id}", 
+                callback_data=f"admin_confirm_slot:{slot_id}"
+            ),
+            InlineKeyboardButton(
+                text=f"❌ Отменить {slot_id}", 
+                callback_data=f"admin_cancel_slot:{slot_id}"
+            )
+        ])
+        
+        lines.append("─" * 30 + "\n")
 
+    # Создаем клавиатуру
+    keyboard = InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+    
     # Разбиваем на части, если сообщение слишком длинное
     full_text = "\n".join(lines)
     parts = chunk_text_by_lines(full_text)
     
-    for part in parts:
-        await message.answer(part, parse_mode="HTML")
+    # Отправляем первое сообщение с клавиатурой
+    if parts:
+        await message.answer(parts[0], parse_mode="HTML", reply_markup=keyboard)
+        
+        # Отправляем остальные части без клавиатуры
+        for part in parts[1:]:
+            await message.answer(part, parse_mode="HTML")
+
+
+@admin_router.callback_query(F.data.startswith("admin_confirm_slot:"))
+async def admin_confirm_slot(callback: CallbackQuery):
+    """Подтверждение записи админом"""
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("❌ У тебя нет прав администратора.")
+        return
+    
+    slot_id = int(callback.data.split(":")[1])
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Получаем данные записи
+        cursor.execute("""
+            SELECT s.user_id, s.channel, s.payment_type, t.date, u.nickname
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            LEFT JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ? AND s.status = 'pending'
+        """, (slot_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            await callback.answer("❌ Запись не найдена или уже обработана.", show_alert=True)
+            return
+        
+        user_id, channel, payment_type, training_date, nickname = row
+        
+        # Подтверждаем запись
+        cursor.execute(
+            "UPDATE slots SET status = 'confirmed' WHERE id = ?", 
+            (slot_id,)
+        )
+        
+        # Списываем абонемент, если оплата через абонемент
+        if payment_type == "subscription":
+            cursor.execute(
+                "UPDATE users SET subscription = subscription - 1 WHERE user_id = ?", 
+                (user_id,)
+            )
+        
+        conn.commit()
+    
+    # Уведомляем пользователя
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    user_name = nickname or f"ID: {user_id}"
+    
+    try:
+        await callback.bot.send_message(
+            user_id, 
+            f"✅ Ваша запись подтверждена!\n"
+            f"📅 Тренировка: {date_fmt}\n"
+            f"📡 Канал: {channel}\n"
+            f"🛸 Ждём вас на тренировке!"
+        )
+    except Exception:
+        pass  # Пользователь может заблокировать бота
+    
+    # Обновляем сообщение админа
+    await callback.message.edit_text(
+        f"✅ Запись {slot_id} подтверждена!\n"
+        f"👤 Пользователь: {user_name}\n"
+        f"📅 Тренировка: {date_fmt}\n"
+        f"📡 Канал: {channel}"
+    )
+
+
+@admin_router.callback_query(F.data.startswith("admin_cancel_slot:"))
+async def admin_cancel_slot(callback: CallbackQuery):
+    """Отмена записи админом"""
+    if callback.from_user.id not in ADMINS:
+        await callback.answer("❌ У тебя нет прав администратора.")
+        return
+    
+    slot_id = int(callback.data.split(":")[1])
+    
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Получаем данные записи
+        cursor.execute("""
+            SELECT s.user_id, s.channel, t.date, u.nickname
+            FROM slots s
+            JOIN trainings t ON s.training_id = t.id
+            LEFT JOIN users u ON s.user_id = u.user_id
+            WHERE s.id = ? AND s.status = 'pending'
+        """, (slot_id,))
+        row = cursor.fetchone()
+        
+        if not row:
+            await callback.answer("❌ Запись не найдена или уже обработана.", show_alert=True)
+            return
+        
+        user_id, channel, training_date, nickname = row
+        
+        # Удаляем запись
+        cursor.execute("DELETE FROM slots WHERE id = ?", (slot_id,))
+        conn.commit()
+    
+    # Уведомляем пользователя
+    date_fmt = datetime.fromisoformat(training_date).strftime("%d.%m.%Y %H:%M")
+    user_name = nickname or f"ID: {user_id}"
+    
+    try:
+        await callback.bot.send_message(
+            user_id, 
+            f"❌ Ваша запись отменена администратором.\n"
+            f"📅 Тренировка: {date_fmt}\n"
+            f"📡 Канал: {channel}\n"
+            f"💡 Вы можете записаться на другую тренировку."
+        )
+    except Exception:
+        pass  # Пользователь может заблокировать бота
+    
+    # Обновляем сообщение админа
+    await callback.message.edit_text(
+        f"❌ Запись {slot_id} отменена!\n"
+        f"👤 Пользователь: {user_name}\n"
+        f"📅 Тренировка: {date_fmt}\n"
+        f"📡 Канал: {channel}"
+    )
